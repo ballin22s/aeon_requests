@@ -47,6 +47,6 @@ AEON attribute  | Description
 --------------- | -------------
 Title           | The records title concatenated with the titles of records in its ancestry in order from root to leaf.
 Site            | The respository code associated to the record. If the `aeon_request_repository_mappings` option has been set in the application configuration, the code will be translated according to the mapping. Note that the `'default'` mapping will be used if no matching mapping is found.
-Location        | This is a concatenation of the title and container details for locations associated with the record in hierarchical order.
+Sub Location    | This is a concatenation of the title and container details for locations associated with the record in hierarchical order.
 ItemVolume      | The container details for the record.
 Callnum         | The id_0 attribute for the record.
