@@ -74,8 +74,8 @@ class AeonRequestsController < ApplicationController
       next unless instance["container"].present?
       next unless instance["container"]["container_locations"].present?
 
-      container_details = "#{instance["container"]["type_1"]}: #{instance["container"]["indicator_1"]}, " +
-        "#{instance["container"]["type_2"]}: #{instance["container"]["indicator_2"]}"
+      container_details = "#{instance["container"]["type_1"]} #{instance["container"]["indicator_1"]} " +
+        "#{instance["container"]["type_2"]} #{instance["container"]["indicator_2"]}"
 
       instance["container"]["container_locations"].each do |container_location|
         next unless container_location["ref"].present?
