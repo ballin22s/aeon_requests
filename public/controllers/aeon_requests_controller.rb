@@ -178,6 +178,9 @@ class AeonRequestsController < ApplicationController
     location    = locations_data_for(record).map{ |l| "#{l[:area]}" }.join("; ")
     item_volume = locations_data_for(record).map{ |l| "#{l[:sub_area]}" }.join("; ")
     callnum     = callnum_for(record)
+    
+    location = location.delete(" OGF")
+    location = location.gsub("REA", "")
 
     {
       title:       title,
