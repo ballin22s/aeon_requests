@@ -2,8 +2,8 @@ require "cgi"
 
 class AeonRequestsController < ApplicationController
 
-  skip_before_filter :unauthorised_access
-  before_filter :get_repository
+  skip_before_action :unauthorised_access
+  before_action :get_repository
 
   def archival_object
     archival_object = JSONModel(:archival_object).find(params[:id], repo_id: params[:repo_id])
@@ -178,6 +178,10 @@ class AeonRequestsController < ApplicationController
     location    = locations_data_for(record).map{ |l| "#{l[:area]}" }.join("; ")
     item_volume = locations_data_for(record).map{ |l| "#{l[:sub_area]}" }.join("; ")
     callnum     = callnum_for(record)
+
+    if AppConfig.has_key?(:aeon_request_location_process)
+      location = AppConfig[:aeon_request_location_process].call location
+    end
 
     {
       title:       title,
