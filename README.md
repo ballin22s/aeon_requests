@@ -33,6 +33,8 @@ AppConfig[:aeon_request_repository_mappings] = {
 }
 # (required if translations are used) Use this value if no translations found
 AppConfig[:aeon_request_repository_mappings_default] = 'specol'
+# (optional) proc to process location strings
+AppConfig[:aeon_request_location_process] = ->(location) { location.gsub(/(REA| OGF)/, "") }
 ```
 
 - Start, or restart ArchivesSpace to pick up the configuration.
