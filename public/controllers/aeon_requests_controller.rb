@@ -2,7 +2,6 @@ require "cgi"
 
 class AeonRequestsController < ApplicationController
 
-  skip_before_action :unauthorised_access
   before_action :get_repository
 
   def archival_object
@@ -111,18 +110,17 @@ class AeonRequestsController < ApplicationController
     case record["jsonmodel_type"]
     when "archival_object"
       archival_object = ArchivalObjectView.new(record)
-      tree_view       = Search.tree_view(archival_object.uri)
+      tree_node_from_root = get_tree_node_from_root_for_uri(archival_object.uri)
 
       breadcrumbs = []
-
-      tree_view["path_to_root"].each do |node|
-        raise RecordNotFound.new if not node["publish"] == true
-
-        if node["node_type"] == "resource"
-          r = JSONModel(:resource).find(node["id"], repo_id: params[:repo_id])
+      tree_node_from_root[record.id.to_s].each do |node|
+        if node["node"].nil? # a resource
+          id = node["root_record_uri"].split("/")[-1]
+          r  = JSONModel(:resource).find(id, repo_id: params[:repo_id])
           breadcrumbs << r
-        elsif node["node_type"] == "archival_object"
-          ao = JSONModel(:archival_object).find(node["id"], repo_id: params[:repo_id])
+        else # an archival_object
+          id = node["node"].split("/")[-1]
+          ao = JSONModel(:archival_object).find(id, repo_id: params[:repo_id])
           breadcrumbs << ao
         end
       end
@@ -138,19 +136,11 @@ class AeonRequestsController < ApplicationController
     when "archival_object"
       # see public/app/controller/records_controller#archival_object
       archival_object = ArchivalObjectView.new(record)
-      tree_view = Search.tree_view(archival_object.uri)
+      tree_node_from_root = get_tree_node_from_root_for_uri(archival_object.uri)
 
       breadcrumbs = []
-
-      tree_view["path_to_root"].each do |node|
-        raise RecordNotFound.new if not node["publish"] == true
-
-        if node["node_type"] === "resource"
-          breadcrumb_title = node["title"]
-          breadcrumbs.push(breadcrumb_title)
-        else
-          breadcrumbs.push(node["title"])
-        end
+      tree_node_from_root[record.id.to_s].each do |node|
+        breadcrumbs.push node["title"]
       end
 
       breadcrumbs.push(archival_object.display_string)
@@ -179,8 +169,8 @@ class AeonRequestsController < ApplicationController
     item_volume = locations_data_for(record).map{ |l| "#{l[:sub_area]}" }.join("; ")
     callnum     = callnum_for(record)
 
-    if AppConfig.has_key?(:aeon_request_location_process)
-      location = AppConfig[:aeon_request_location_process].call location
+    if AppConfig.has_key?(:aeon_request_location_find) and AppConfig.has_key?(:aeon_request_location_replace)
+      location = location.gsub(AppConfig[:aeon_request_location_find], AppConfig[:aeon_request_location_replace])
     end
 
     {
