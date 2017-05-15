@@ -1,21 +1,42 @@
-my_routes = [File.join(File.dirname(__FILE__), "routes.rb")]
-ArchivesSpacePublic::Application.config.paths['config/routes'].concat(my_routes)
+ArchivesSpacePublic::Application.extend_aspace_routes(File.join(File.dirname(__FILE__), "routes.rb"))
 
 module ApplicationHelper
 
   # record should be a resource or archival object
-  # returns true if the record or any of its ancestors has an associated
-  # location, otherwise false
+  # display if instances with containers and container locations are present
   def display_aeon_request_links_for(record)
-    record.present? && !record_has_children?(record)
+    return false unless record.present?
+    record["instances"].each do |i|
+      return true if i["container"].present? and i["container"]["container_locations"].any?
+    end
+  end
+
+  def get_tree_node_from_root_for_uri(uri)
+    get_tree_by_type_for_uri("tree_node_from_root", uri)
+  end
+
+  def get_tree_waypoint_for_uri(uri)
+    get_tree_by_type_for_uri("tree_waypoint", uri)
   end
 
   private
 
-  # record should be a resource or archival object
-  # returns true if a record has children, otherwise false
-  def record_has_children?(record)
-    Search.tree_view(record.uri)["self"]["has_children"]
+  def get_tree_by_type_for_uri(type, uri)
+    begin
+      json_str = JSONModel::HTTP::get_json("/search",
+        {
+          "page" => 1,
+          "q" => "primary_type:#{type} AND pui_parent_id:\"#{uri}\""
+        }
+       )
+       .fetch('results')
+       .fetch(0)
+       .fetch('json')
+
+      ASUtils.json_parse(json_str)
+    rescue
+      raise RecordNotFound.new("Record not found: #{uri}")
+    end
   end
 
 end
