@@ -1,0 +1,24 @@
+<%= form_tag(app_prefix("fill_request"), method: 'post', :id => 'request_form') do %>
+  <%= render partial: 'shared/request_hiddens' %>
+  <!-- Username and Email are retained for validation but not displayed -->
+  <div  id="request">
+    <div class="form-group ">
+      <%= label_tag(:user_name, "#{t('request.user_name')} #{t('request.required')}" ,  :class => 'sr-only') %>
+      <div class="input-group">
+        <%= hidden_field_tag :user_name, 'aeon', :placeholder => t('request.user_name'), :class => "form-control"%>
+      </div>
+    </div>
+    <div class="form-group ">
+      <%= label_tag(:user_email, "#{t('request.user_email')} #{t('request.required')}",  :class => 'sr-only') %>
+      <div class="input-group">
+        <%= hidden_field_tag :user_email, 'aeon@example.com', :type => 'email', :placeholder => t('request.user_email'), :class => 'form-control' %>
+      </div>
+    </div>
+    <div class="form-group ">
+      <h4><%= t('request.aeon.confirmation') %></h4>
+      <blockquote><%= @request.cite %></blockquote>
+      <p><strong><%= t('request.aeon.redirect_notice') %></strong></p>
+    </div>
+    <button type="submit" class="btn btn-primary action-btn noscript"><%= t('request.submit') %></button>
+  </div>
+<% end %>

@@ -1,190 +1,93 @@
-require "cgi"
+require Rails.root.join('app', 'controllers', 'requests_controller')
 
-class AeonRequestsController < ApplicationController
+# override public RequestsController
+class RequestsController < ApplicationController
 
-  before_action :get_repository
+  # override make_request: redirect the request to aeon
+  def make_request
+    @request  = RequestItem.new(params)
+    @endpoint = AppConfig[:aspace_aeon_requests_endpoint]
 
-  def archival_object
-    archival_object = JSONModel(:archival_object).find(params[:id], repo_id: params[:repo_id])
-    raise RecordNotFound.new if (!archival_object || archival_object.has_unpublished_ancestor || !archival_object.publish)
+    # @request contains all available request data (see README.md for examples)
+    $stdout.puts("\n\n\n#{@request.to_h}\n\n\n")
 
-    locations = fetch_locations_for(archival_object)
-    resource  = fetch_resource_for(archival_object)
-
-    result = {
-      aeon_request_data: aeon_request_hash(archival_object),
-      archival_object:   archival_object,
-      locations:         locations,
-      resource:          resource
-    }
-
-    respond_to do |format|
-      format.html { redirect_to aeon_link(archival_object) }
-      format.json { render text: result.to_json }
+    errs = @request.validate
+    if errs.blank?
+      # TODO: error handling
+      aeon_request_url = build_aeon_request_url.to_s
+      $stdout.puts("\n\n\n#{aeon_request_url}\n\n\n")
+      redirect_to aeon_request_url
+    else
+      flash[:error] = errs
+      redirect_back(fallback_location: request[:request_uri]) and return
     end
-
-  end
-
-  def resource
-    resource = JSONModel(:resource).find(params[:id], repo_id: params[:repo_id])
-    raise RecordNotFound.new if (!resource || !resource.publish)
-
-    locations = fetch_locations_for(resource)
-
-    result = {
-      aeon_request_data: aeon_request_hash(resource),
-      resource:          resource,
-      locations:         locations
-    }
-
-    respond_to do |format|
-      format.html { redirect_to aeon_link(resource) }
-      format.json { render text: result.to_json }
-    end
-
   end
 
   private
 
-  def get_repository
-    @repository = @repositories.select{|repo| JSONModel(:repository).id_for(repo.uri).to_s === params[:repo_id]}.first
-  end
+  # generate aeon request url:
+  # [title, site, callnum, sublocation, volume]
+  def build_aeon_request_url
+    # hash for params required for aeon extracted from @request
+    callnum        = id_to_callnum
+    site           = site_lookup
+    specialrequest = note_to_specialrequest
+    sublocation    = locations_to_sublocation
+    title          = title_with_hierarchy
+    volume         = containers_to_volume
 
-  def fetch_resource_for(record)
-    resource_id = record["resource"]["ref"].split("/").last
-    JSONModel(:resource).find(resource_id, repo_id: params[:repo_id])
-  rescue
-    "resource not found"
-  end
-
-  def callnum_for(record)
-    if record["jsonmodel_type"] == "archival_object"
-      resource_id = record["resource"]["ref"].split("/").last
-      JSONModel(:resource).find(resource_id, repo_id: params[:repo_id])["id_0"]
-    elsif record["jsonmodel_type"] == "resource"
-      record["id_0"]
-    end
-  end
-
-  def fetch_locations_for(record)
-    locations = []
-
-    record["instances"].each do |instance|
-      next unless instance["container"].present?
-      next unless instance["container"]["container_locations"].present?
-
-      container_details = "#{instance["container"]["type_1"]} #{instance["container"]["indicator_1"]} " +
-        "#{instance["container"]["type_2"]} #{instance["container"]["indicator_2"]}"
-
-      instance["container"]["container_locations"].each do |container_location|
-        next unless container_location["ref"].present?
-
-        location_id = container_location["ref"].split("/").last
-        location    = JSONModel(:location).find(location_id)
-        title       = location["title"]
-        locations << {
-          area:     title,
-          sub_area: container_details,
-          location: location
-        }
-      end
-    end
-
-    locations
-  end
-
-  # returns locations associated with the record
-  # if no locations are found, move up the records hierarchy and check again
-  def locations_data_for(record)
-    records = ancestry_for(record).reverse
-
-    records.each do |record|
-      locations = fetch_locations_for(record)
-      return locations unless locations.empty?
-    end
-
-    []
-  end
-
-  def ancestry_for(record)
-    case record["jsonmodel_type"]
-    when "archival_object"
-      archival_object = ArchivalObjectView.new(record)
-      tree_node_from_root = get_tree_node_from_root_for_uri(archival_object.uri)
-
-      breadcrumbs = []
-      tree_node_from_root[record.id.to_s].each do |node|
-        if node["node"].nil? # a resource
-          id = node["root_record_uri"].split("/")[-1]
-          r  = JSONModel(:resource).find(id, repo_id: params[:repo_id])
-          breadcrumbs << r
-        else # an archival_object
-          id = node["node"].split("/")[-1]
-          ao = JSONModel(:archival_object).find(id, repo_id: params[:repo_id])
-          breadcrumbs << ao
-        end
-      end
-
-      breadcrumbs << record
-    when "resource"
-      [record]
-    end
-  end
-
-  def ancestry_titles_for(record)
-    case record["jsonmodel_type"]
-    when "archival_object"
-      # see public/app/controller/records_controller#archival_object
-      archival_object = ArchivalObjectView.new(record)
-      tree_node_from_root = get_tree_node_from_root_for_uri(archival_object.uri)
-
-      breadcrumbs = []
-      tree_node_from_root[record.id.to_s].each do |node|
-        breadcrumbs.push node["title"]
-      end
-
-      breadcrumbs.push(archival_object.display_string)
-    when "resource"
-      # see public/app/controller/records_controller#resource
-      resource = ResourceView.new(record)
-      breadcrumb_title = resource.title
-      [breadcrumb_title]
-    end
-  end
-
-  def determine_site_from_repo_code(repo_code)
-    if AppConfig[:aeon_request_repository_mappings].present?
-      AppConfig[:aeon_request_repository_mappings][repo_code] ||
-        AppConfig[:aeon_request_repository_mappings_default]
-    else
-      repo_code
-    end
-  end
-
-  def aeon_request_hash(record)
-    title = ancestry_titles_for(record).first
-
-    site        = determine_site_from_repo_code(@repository["repo_code"])
-    location    = locations_data_for(record).map{ |l| "#{l[:area]}" }.join("; ")
-    item_volume = locations_data_for(record).map{ |l| "#{l[:sub_area]}" }.join("; ")
-    callnum     = callnum_for(record)
-
-    if AppConfig.has_key?(:aeon_request_location_find) and AppConfig.has_key?(:aeon_request_location_replace)
-      location = location.gsub(AppConfig[:aeon_request_location_find], AppConfig[:aeon_request_location_replace])
-    end
-
-    {
-      title:       title,
-      site:        site,
-      sub_location:    location,
-      item_volume: item_volume,
-      callnum:     callnum
+    params = {
+      callnum: callnum,
+      site:    site,
+      title:   title,
     }
+    params[:specialrequest] = specialrequest unless specialrequest.empty?
+    params[:sublocation]    = sublocation unless sublocation.empty?
+    params[:volume]         = volume unless volume.empty?
+
+    AppConfig[:aspace_aeon_requests_params_transform].each do |param, transform|
+      params[param] = transform.call(params[param]) if params.has_key?(param)
+    end
+
+    URI::HTTPS.build(host: @endpoint, path: '/OpenURL', query: URI.encode_www_form(params))
   end
 
-  def aeon_link(record)
-    params = aeon_request_hash(record).map { |k,v| "#{k.to_s.camelcase}=#{CGI.escape(v)}" }
-    "#{AppConfig[:aeon_request_endpoint]}/OpenURL?#{params.join('&')}"
+  def containers_to_volume
+    volume = []
+    if @request.container and @request.container.any?
+      @request.container.zip(@request.barcode).each do |container, barcode|
+        v = barcode.empty? ? container : "#{container}, Barcode: #{barcode}"
+        volume << v
+      end
+    end
+    volume.join(";")
+  end
+
+  def id_to_callnum
+    @request.resource_id ? @request.resource_id : @request.identifier
+  end
+
+  def locations_to_sublocation
+    sublocation = ""
+    if @request.location_title and @request.location_title.any?
+      sublocation = @request.location_title.join(";")
+    end
+    sublocation
+  end
+
+  def note_to_specialrequest
+    @request.note ? @request.note : ""
+  end
+
+  def site_lookup
+    AppConfig[:aspace_aeon_requests_repo_map].fetch(
+      @request.repo_code,
+      AppConfig[:aspace_aeon_requests_repo_default]
+    )
+  end
+
+  def title_with_hierarchy
+    @request.hierarchy ? @request.hierarchy.push(@request.title).join(",") : @request.title
   end
 
 end

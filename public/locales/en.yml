@@ -1,0 +1,5 @@
+en:
+  request:
+    aeon:
+      confirmation: "Confirmation for:"
+      redirect_notice: "You will be redirected to complete this request."
